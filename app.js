@@ -83,6 +83,13 @@ function detectPlatform(url) {
   return { key: 'other', label: '其他' };
 }
 
+// items saved before multi-category support only have a single `category` string
+function getItemCategories(it) {
+  if (it.categories && it.categories.length) return it.categories;
+  if (it.category) return [it.category];
+  return [];
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -131,6 +138,7 @@ let searchQuery = '';
 let editingId = null; // when set, sheet is in edit mode
 let pendingCoverDataURL = null; // cover chosen in the add/edit sheet
 let pendingTags = [];
+let pendingCategories = [];
 
 // ── Rendering: category tabs ─────────────────────────────────────
 function renderCategoryTabs() {
@@ -157,7 +165,7 @@ function renderGrid() {
   grid.innerHTML = '';
 
   let items = allItems.slice().sort((a, b) => b.createdAt - a.createdAt);
-  if (activeCategory !== 'all') items = items.filter((it) => it.category === activeCategory);
+  if (activeCategory !== 'all') items = items.filter((it) => getItemCategories(it).includes(activeCategory));
   if (searchQuery.trim()) {
     const q = searchQuery.trim().toLowerCase();
     items = items.filter((it) => {
@@ -200,6 +208,19 @@ function renderGrid() {
     title.textContent = it.title || '(未命名)';
     body.appendChild(title);
 
+    const cats = getItemCategories(it);
+    if (cats.length) {
+      const catsWrap = document.createElement('div');
+      catsWrap.className = 'cardTags';
+      cats.forEach((c) => {
+        const catChip = document.createElement('span');
+        catChip.className = 'miniCat';
+        catChip.textContent = c;
+        catsWrap.appendChild(catChip);
+      });
+      body.appendChild(catsWrap);
+    }
+
     if (it.tags && it.tags.length) {
       const tagsWrap = document.createElement('div');
       tagsWrap.className = 'cardTags';
@@ -222,18 +243,21 @@ async function refresh() {
 }
 
 // ── Add/Edit sheet ────────────────────────────────────────────────
-function renderCategoryPicker(selected) {
+// Categories are multi-select: a link can belong to several categories at once.
+function renderCategoryPicker() {
   const wrap = $('#categoryPicker');
   wrap.innerHTML = '';
   categories.forEach((cat) => {
     const chip = document.createElement('button');
     chip.type = 'button';
-    chip.className = 'chip' + (selected === cat ? ' active' : '');
+    chip.className = 'chip' + (pendingCategories.includes(cat) ? ' active' : '');
     chip.textContent = cat;
     chip.dataset.cat = cat;
     chip.onclick = () => {
-      wrap.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
-      chip.classList.add('active');
+      const i = pendingCategories.indexOf(cat);
+      if (i > -1) pendingCategories.splice(i, 1);
+      else pendingCategories.push(cat);
+      renderCategoryPicker();
     };
     wrap.appendChild(chip);
   });
@@ -246,16 +270,12 @@ function renderCategoryPicker(selected) {
     if (name && name.trim() && !categories.includes(name.trim())) {
       categories.push(name.trim());
       saveCategories(categories);
-      renderCategoryPicker(name.trim());
+      pendingCategories.push(name.trim());
+      renderCategoryPicker();
       renderCategoryTabs();
     }
   };
   wrap.appendChild(addBtn);
-}
-
-function getSelectedCategory() {
-  const active = $('#categoryPicker').querySelector('.chip.active');
-  return active ? active.dataset.cat : categories[0];
 }
 
 function renderTagList() {
@@ -287,6 +307,7 @@ function setCoverPreview(dataURL) {
 function resetSheet() {
   editingId = null;
   pendingTags = [];
+  pendingCategories = [];
   pendingCoverDataURL = null;
   $('#urlInput').value = '';
   $('#titleInput').value = '';
@@ -296,7 +317,7 @@ function resetSheet() {
   $('#coverFileInput').value = '';
   setCoverPreview(null);
   renderTagList();
-  renderCategoryPicker(categories[0]);
+  renderCategoryPicker();
   $('#deleteBtn').hidden = true;
   $('#sheetTitle').textContent = '添加灵感';
 }
@@ -315,7 +336,8 @@ function openEditSheet(item) {
   $('#noteInput').value = item.note || '';
   pendingTags = (item.tags || []).slice();
   renderTagList();
-  renderCategoryPicker(item.category);
+  pendingCategories = getItemCategories(item).slice();
+  renderCategoryPicker();
   setCoverPreview(item.cover || null);
   $('#deleteBtn').hidden = false;
   $('#sheetOverlay').hidden = false;
@@ -362,7 +384,7 @@ async function saveSheet() {
     url,
     title,
     note: $('#noteInput').value.trim(),
-    category: getSelectedCategory(),
+    categories: pendingCategories.slice(),
     tags: pendingTags.slice(),
     cover: pendingCoverDataURL,
     createdAt: editingId ? (allItems.find((i) => i.id === editingId)?.createdAt || Date.now()) : Date.now(),
@@ -397,10 +419,12 @@ function openDetail(id) {
 
   const meta = $('#detailMeta');
   meta.innerHTML = '';
-  const catChip = document.createElement('span');
-  catChip.className = 'chip active';
-  catChip.textContent = item.category;
-  meta.appendChild(catChip);
+  getItemCategories(item).forEach((c) => {
+    const catChip = document.createElement('span');
+    catChip.className = 'chip active';
+    catChip.textContent = c;
+    meta.appendChild(catChip);
+  });
   const platChip = document.createElement('span');
   platChip.className = 'chip';
   platChip.textContent = platform.label;
