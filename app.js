@@ -1,72 +1,128 @@
-// ── DB layer (IndexedDB) ─────────────────────────────────────────
-const DB_NAME = 'inspoLibrary';
-const DB_VERSION = 1;
-const STORE = 'items';
+// ── DB layer (Supabase REST) ─────────────────────────────────────
+const SUPABASE_URL = 'https://uhoakbiqdirvvifsgqdz.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_Sm6w0H6D68plDIo_em2RSg_4xTyW-LQ';
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        const store = db.createObjectStore(STORE, { keyPath: 'id' });
-        store.createIndex('createdAt', 'createdAt');
-        store.createIndex('category', 'category');
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+async function sb(path, options = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Supabase ${res.status}: ${text}`);
+  }
+  return res;
 }
 
-let dbPromise = openDB();
+function rowToItem(row) {
+  return {
+    id: row.id,
+    url: row.url || '',
+    title: row.title || '',
+    note: row.note || '',
+    categories: row.categories || [],
+    tags: row.tags || [],
+    cover: row.cover || null,
+    createdAt: row.created_at,
+  };
+}
+
+function itemToRow(item) {
+  return {
+    id: item.id,
+    url: item.url,
+    title: item.title,
+    note: item.note,
+    categories: item.categories,
+    tags: item.tags,
+    cover: item.cover,
+    created_at: item.createdAt,
+  };
+}
 
 async function dbGetAll() {
-  const db = await dbPromise;
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+  const res = await sb('items?select=*&order=created_at.desc');
+  const rows = await res.json();
+  return rows.map(rowToItem);
 }
 
 async function dbPut(item) {
-  const db = await dbPromise;
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(item);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+  await sb('items', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(itemToRow(item)),
   });
 }
 
 async function dbDelete(id) {
-  const db = await dbPromise;
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+  await sb(`items?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// one-time: pull anything left in the old per-device IndexedDB store into Supabase
+async function migrateLocalItemsToCloud() {
+  const FLAG = 'inspoLibrary_migratedToSupabase';
+  if (localStorage.getItem(FLAG)) return;
+  try {
+    const localItems = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('inspoLibrary', 1);
+      req.onupgradeneeded = () => resolve([]); // no existing store -> nothing to migrate
+      req.onsuccess = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('items')) { resolve([]); return; }
+        const tx = db.transaction('items', 'readonly');
+        const getAllReq = tx.objectStore('items').getAll();
+        getAllReq.onsuccess = () => resolve(getAllReq.result || []);
+        getAllReq.onerror = () => resolve([]);
+      };
+      req.onerror = () => resolve([]);
+    });
+    for (const it of localItems) {
+      const categories = it.categories && it.categories.length ? it.categories : (it.category ? [it.category] : []);
+      await dbPut({ ...it, categories }).catch(() => {});
+    }
+    if (localItems.length) toast(`已把本机 ${localItems.length} 条旧数据搬到云端`);
+  } catch (e) {
+    // no local IndexedDB data on this device/browser — nothing to do
+  } finally {
+    localStorage.setItem(FLAG, '1');
+  }
+}
+
+// ── Categories (stored in Supabase so they sync across devices too) ─
+const DEFAULT_CATEGORIES = ['旅游攻略', '市场营销', '搞笑账号灵感', '本地生活探店', '其他'];
+
+async function loadCategories() {
+  try {
+    const res = await sb('categories?select=name&order=created_at.asc');
+    const rows = await res.json();
+    if (rows.length) return rows.map((r) => r.name);
+    for (const name of DEFAULT_CATEGORIES) {
+      await sb('categories', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ name, created_at: Date.now() }),
+      }).catch(() => {});
+    }
+    return DEFAULT_CATEGORIES.slice();
+  } catch (e) {
+    return DEFAULT_CATEGORIES.slice();
+  }
+}
+
+async function addCategoryRemote(name) {
+  await sb('categories', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ name, created_at: Date.now() }),
   });
 }
 
-// ── Local settings (categories) ──────────────────────────────────
-const DEFAULT_CATEGORIES = ['旅游攻略', '市场营销', '搞笑账号灵感', '本地生活探店', '其他'];
-const CAT_KEY = 'inspoLibrary_categories';
-
-function loadCategories() {
-  try {
-    const raw = localStorage.getItem(CAT_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  localStorage.setItem(CAT_KEY, JSON.stringify(DEFAULT_CATEGORIES));
-  return DEFAULT_CATEGORIES.slice();
-}
-function saveCategories(cats) {
-  localStorage.setItem(CAT_KEY, JSON.stringify(cats));
-}
-let categories = loadCategories();
+let categories = [];
 
 // ── Platform detection ───────────────────────────────────────────
 const PLATFORM_MAP = [
@@ -111,7 +167,7 @@ function fileToDataURL(file) {
   });
 }
 
-// downscale an image (data URL or remote URL fetched as blob) to keep IndexedDB lean
+// downscale an image (data URL or remote URL fetched as blob) to keep storage lean
 async function compressImage(srcDataURL, maxW = 720, quality = 0.82) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -238,8 +294,12 @@ function renderGrid() {
 }
 
 async function refresh() {
-  allItems = await dbGetAll();
-  renderGrid();
+  try {
+    allItems = await dbGetAll();
+    renderGrid();
+  } catch (e) {
+    toast('加载失败，请检查网络后下拉刷新页面');
+  }
 }
 
 // ── Add/Edit sheet ────────────────────────────────────────────────
@@ -265,14 +325,18 @@ function renderCategoryPicker() {
   addBtn.type = 'button';
   addBtn.className = 'chip addCat';
   addBtn.textContent = '＋ 新分类';
-  addBtn.onclick = () => {
+  addBtn.onclick = async () => {
     const name = prompt('新分类名称');
-    if (name && name.trim() && !categories.includes(name.trim())) {
-      categories.push(name.trim());
-      saveCategories(categories);
-      pendingCategories.push(name.trim());
-      renderCategoryPicker();
-      renderCategoryTabs();
+    const trimmed = name && name.trim();
+    if (!trimmed || categories.includes(trimmed)) return;
+    categories.push(trimmed);
+    pendingCategories.push(trimmed);
+    renderCategoryPicker();
+    renderCategoryTabs();
+    try {
+      await addCategoryRemote(trimmed);
+    } catch (e) {
+      toast('新分类同步到云端失败，请检查网络');
     }
   };
   wrap.appendChild(addBtn);
@@ -389,20 +453,28 @@ async function saveSheet() {
     cover: pendingCoverDataURL,
     createdAt: editingId ? (allItems.find((i) => i.id === editingId)?.createdAt || Date.now()) : Date.now(),
   };
-  await dbPut(item);
-  closeSheet();
-  await refresh();
-  toast('已保存');
+  try {
+    await dbPut(item);
+    closeSheet();
+    await refresh();
+    toast('已保存');
+  } catch (e) {
+    toast('保存失败，请检查网络后重试');
+  }
 }
 
 async function deleteCurrent() {
   if (!editingId) return;
   if (!confirm('删除这条灵感？')) return;
-  await dbDelete(editingId);
-  closeSheet();
-  closeDetail();
-  await refresh();
-  toast('已删除');
+  try {
+    await dbDelete(editingId);
+    closeSheet();
+    closeDetail();
+    await refresh();
+    toast('已删除');
+  } catch (e) {
+    toast('删除失败，请检查网络后重试');
+  }
 }
 
 // ── Detail viewer ────────────────────────────────────────────────
@@ -506,8 +578,12 @@ $('#detailEditBtn').onclick = () => {
 };
 
 // ── Init ──────────────────────────────────────────────────────────
-renderCategoryTabs();
-refresh();
+(async function init() {
+  await migrateLocalItemsToCloud();
+  categories = await loadCategories();
+  renderCategoryTabs();
+  await refresh();
+})();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
