@@ -167,6 +167,37 @@ function fileToDataURL(file) {
   });
 }
 
+// xhs/douyin "分享" copies a text blob, not a bare URL — the real title is sitting
+// right there in the text, so pull it out instead of relying on server-side scraping.
+function extractShareText(raw) {
+  const text = (raw || '').trim();
+  const urlMatch = text.match(/https?:\/\/\S+/);
+  if (!urlMatch) return { url: text, title: '' };
+
+  const url = urlMatch[0].replace(/[，。！？,.!?]+$/, '').trim();
+  let before = text.slice(0, urlMatch.index);
+
+  before = before.replace(/^\d+(\.\d+)?\s+/, ''); // douyin's leading "1.56 " version code
+  before = before.replace(/^.*?看看【[^】]*】\s*/, ''); // "...看看【某某的作品】"
+  before = before.replace(/^(复制打开抖音[，,]?\s*)/, '');
+  before = before.replace(/^(复制本条消息[，,]?\s*打开【[^】]*】[^！!]*[！!]?\s*)/, '');
+  before = before.replace(/^(看看这?篇?分享[~！!]*\s*)/, '');
+  before = before.replace(/(\s*@\S+)+\s*$/, ''); // trailing "@某人 @..." mentions
+
+  return { url, title: before.trim() };
+}
+
+function applyPastedShareText(raw) {
+  const { url, title } = extractShareText(raw);
+  if (url) $('#urlInput').value = url;
+  if (title && !$('#titleInput').value) {
+    $('#titleInput').value = title;
+    toast('已从分享文本中识别标题');
+  } else {
+    toast('已粘贴');
+  }
+}
+
 // downscale an image (data URL or remote URL fetched as blob) to keep storage lean
 async function compressImage(srcDataURL, maxW = 720, quality = 0.82) {
   return new Promise((resolve) => {
@@ -538,11 +569,20 @@ $('#coverRemoveBtn').onclick = () => setCoverPreview(null);
 $('#pasteBtn').onclick = async () => {
   try {
     const text = await navigator.clipboard.readText();
-    if (text) { $('#urlInput').value = text.trim(); toast('已粘贴'); }
+    if (text) applyPastedShareText(text.trim());
   } catch (e) {
     toast('无法读取剪贴板，请手动粘贴');
   }
 };
+
+// also catch a manual Cmd/Ctrl+V paste directly into the link field
+$('#urlInput').addEventListener('paste', (e) => {
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  if (text && /\s/.test(text.trim())) {
+    e.preventDefault();
+    applyPastedShareText(text.trim());
+  }
+});
 
 $('#coverFileInput').onchange = async (e) => {
   const file = e.target.files[0];
