@@ -1,0 +1,9 @@
+{
+  "name": "inspo-library",
+  "private": true,
+  "version": "1.0.0",
+  "description": "个人灵感库 - 收藏分类小红书/抖音/微信/X/Instagram链接",
+  "engines": {
+    "node": ">=18"
+  }
+}

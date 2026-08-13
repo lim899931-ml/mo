@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#111112">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="灵感库">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+<title>灵感库 ✦</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <h1>灵感库 ✦</h1>
+    <button id="addBtn" class="iconBtn" aria-label="添加灵感">＋</button>
+  </header>
+
+  <div id="searchBar">
+    <input id="searchInput" type="search" placeholder="搜索标题 / 标签 / 备注...">
+  </div>
+
+  <nav id="categoryTabs"></nav>
+
+  <main id="grid"></main>
+
+  <p id="emptyState" hidden>还没有灵感，点右上角 ＋ 开始收藏吧</p>
+
+</div>
+
+<!-- Add / Edit Sheet -->
+<div id="sheetOverlay" class="overlay" hidden>
+  <div id="sheet" class="sheet">
+    <div class="sheetHeader">
+      <h2 id="sheetTitle">添加灵感</h2>
+      <button id="sheetClose" class="iconBtn" aria-label="关闭">✕</button>
+    </div>
+
+    <div class="sheetBody">
+      <label class="field">
+        <span class="fieldLabel">链接</span>
+        <div class="linkRow">
+          <input id="urlInput" type="url" placeholder="粘贴 小红书/抖音/微信/X/Ins 链接...">
+          <button id="pasteBtn" class="smallBtn" type="button">粘贴</button>
+        </div>
+      </label>
+
+      <div class="linkActions">
+        <button id="fetchBtn" class="smallBtn primary" type="button">自动抓取封面/标题</button>
+        <span id="fetchStatus" class="fetchStatus"></span>
+      </div>
+
+      <div id="coverPreviewWrap" class="coverPreviewWrap" hidden>
+        <img id="coverPreview" alt="封面预览">
+        <button id="coverRemoveBtn" class="smallBtn ghost" type="button">移除封面</button>
+      </div>
+
+      <label class="field">
+        <span class="fieldLabel">封面（自动抓取失败时手动上传截图）</span>
+        <input id="coverFileInput" type="file" accept="image/*">
+      </label>
+
+      <label class="field">
+        <span class="fieldLabel">标题</span>
+        <input id="titleInput" type="text" placeholder="给这条灵感起个标题...">
+      </label>
+
+      <label class="field">
+        <span class="fieldLabel">分类</span>
+        <div id="categoryPicker" class="chipPicker"></div>
+      </label>
+
+      <label class="field">
+        <span class="fieldLabel">关键词标签（回车添加）</span>
+        <input id="tagInput" type="text" placeholder="例如：亲子 / 三亚 / 反转结尾">
+        <div id="tagList" class="chipList"></div>
+      </label>
+
+      <label class="field">
+        <span class="fieldLabel">备注（可选）</span>
+        <textarea id="noteInput" rows="2" placeholder="为什么想收藏这条..."></textarea>
+      </label>
+    </div>
+
+    <div class="sheetFooter">
+      <button id="deleteBtn" class="smallBtn danger" type="button" hidden>删除</button>
+      <button id="saveBtn" class="smallBtn primary wide" type="button">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Viewer -->
+<div id="detailOverlay" class="overlay" hidden>
+  <div id="detailSheet" class="sheet detailSheet">
+    <button id="detailClose" class="iconBtn detailCloseBtn" aria-label="关闭">✕</button>
+    <img id="detailCover" alt="封面">
+    <div class="detailBody">
+      <h2 id="detailTitle"></h2>
+      <div id="detailMeta" class="detailMeta"></div>
+      <p id="detailNote" class="detailNote"></p>
+      <div class="detailActions">
+        <a id="detailOpenLink" class="smallBtn primary wide" target="_blank" rel="noopener">打开原链接</a>
+        <button id="detailEditBtn" class="smallBtn wide" type="button">编辑</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
