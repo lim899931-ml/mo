@@ -190,6 +190,15 @@ body {
   border-radius: 999px;
   white-space: nowrap;
 }
+.miniCat {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #10221f;
+  background: var(--accent);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
 
 #emptyState {
   text-align: center;
