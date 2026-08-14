@@ -237,6 +237,15 @@ body {
   padding: 60px 20px;
   font-size: 14px;
 }
+.loadError {
+  text-align: center;
+  padding: 60px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.loadError p { color: var(--danger); font-size: 14px; line-height: 1.5; }
 
 /* ── Todo view ── */
 #todoView { flex: 1; }
