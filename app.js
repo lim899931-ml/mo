@@ -125,7 +125,7 @@ async function addCategoryRemote(name) {
 let categories = [];
 
 // ── Todo layer (content-planning items, separate from the inspiration library) ──
-const ACCOUNTS = ['AI号', '搞笑号', '旅游探店号'];
+const ACCOUNTS = ['AI号', '搞笑号', '旅游探店号', '海外社媒'];
 
 function todoRowToItem(row) {
   return {
@@ -280,6 +280,7 @@ let activeView = 'inspiration'; // 'inspiration' | 'todo'
 let allTodos = [];
 let editingTodoId = null;
 let pendingAccount = null;
+let activeAccountFilter = 'all';
 
 // ── Rendering: category tabs ─────────────────────────────────────
 // Same reasoning as renderCategoryPicker: build the tabs once, toggle classes
@@ -638,11 +639,36 @@ function switchView(view) {
 }
 
 // ── Todo: rendering ───────────────────────────────────────────────
+// Static list (no "add new account" flow), so the tabs never need rebuilding —
+// same in-place-toggle approach as renderCategoryTabs, just simpler since the
+// row is built exactly once.
+function renderTodoAccountTabs() {
+  const nav = $('#todoAccountTabs');
+  nav.innerHTML = '';
+  const values = ['all', ...ACCOUNTS];
+  const tabs = values.map((val) => {
+    const btn = document.createElement('button');
+    btn.className = 'catChip' + (activeAccountFilter === val ? ' active' : '');
+    btn.textContent = val === 'all' ? '全部' : val;
+    nav.appendChild(btn);
+    return btn;
+  });
+  values.forEach((val, i) => {
+    tabs[i].onclick = () => {
+      activeAccountFilter = val;
+      tabs.forEach((t, j) => t.classList.toggle('active', values[j] === val));
+      renderTodoList();
+    };
+  });
+}
+
 function renderTodoList() {
   const list = $('#todoList');
   list.innerHTML = '';
 
-  const todos = allTodos.slice().sort((a, b) => {
+  let todos = allTodos.slice();
+  if (activeAccountFilter !== 'all') todos = todos.filter((t) => t.account === activeAccountFilter);
+  todos.sort((a, b) => {
     if (a.done !== b.done) return a.done ? 1 : -1;
     return b.createdAt - a.createdAt;
   });
@@ -879,6 +905,7 @@ $('#detailEditBtn').onclick = () => {
   await migrateLocalItemsToCloud();
   categories = await loadCategories();
   renderCategoryTabs();
+  renderTodoAccountTabs();
   await refresh();
   await refreshTodos();
 })();
