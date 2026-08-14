@@ -80,8 +80,8 @@ body {
 }
 #searchInput::placeholder { color: var(--text2); }
 
-/* ── Category tabs ── */
-#categoryTabs {
+/* ── Category tabs (also used by the todo view's account tabs) ── */
+#categoryTabs, #todoAccountTabs {
   display: flex;
   gap: 8px;
   padding: 0 16px 12px;
@@ -89,7 +89,8 @@ body {
   scrollbar-width: none;
   flex-shrink: 0;
 }
-#categoryTabs::-webkit-scrollbar { display: none; }
+#todoAccountTabs { padding-top: 12px; }
+#categoryTabs::-webkit-scrollbar, #todoAccountTabs::-webkit-scrollbar { display: none; }
 
 .catChip {
   flex-shrink: 0;
