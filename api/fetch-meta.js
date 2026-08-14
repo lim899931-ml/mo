@@ -1,3 +1,8 @@
+// Vercel serverless function: best-effort og:title / og:image scraper.
+// Many platforms (xhs, douyin, wechat, instagram) block unauthenticated
+// scraping — this returns { title: null, image: null } when nothing can
+// be found so the frontend falls back to manual entry.
+
 const UA_CANDIDATES = [
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
   'Mozilla/5.0 (compatible; facebookexternalhit/1.1; +http://www.facebook.com/externalhit_uatext.php)',
@@ -87,7 +92,7 @@ module.exports = async (req, res) => {
     const result = await fetchWithTimeout(target.toString(), ua, 7000);
     if (result) {
       html = result;
-      if (/og:(title|image)/i.test(result)) break;
+      if (/og:(title|image)/i.test(result)) break; // good enough, stop trying more UAs
     }
   }
 
@@ -97,10 +102,22 @@ module.exports = async (req, res) => {
   }
 
   const rawTitle = extractMeta(html, ['og:title', 'twitter:title']) || extractTitleTag(html);
-  const title = rawTitle ? decodeEntities(rawTitle).trim() : null;
+  let title = rawTitle ? decodeEntities(rawTitle).trim() : null;
 
   let image = extractMeta(html, ['og:image', 'og:image:secure_url', 'twitter:image']);
-  if (image) image = resolveUrl(image, target);
+  // HTML attributes escape "&" as "&amp;" — undecoded, that corrupts every query
+  // param after the first one (signed CDN URLs are all query params), so the
+  // proxy's request to fetch the actual bytes fails and the cover never shows.
+  if (image) image = resolveUrl(decodeEntities(image), target);
+
+  // Instagram doesn't expose the real per-post caption to unauthenticated scrapers —
+  // og:title/<title> is always generic boilerplate ("Instagram", or "<name> (@handle)
+  // • Instagram Reels/Photos/Videos"), and the static "not logged in" card image is
+  // useless too. Treat both as a failed fetch rather than auto-filling misleading content.
+  if (/instagram\.com$/i.test(target.hostname.replace(/^www\./, ''))) {
+    if (title && /^instagram$|instagram (reels?|photos?|videos?)$/i.test(title.trim())) title = null;
+    if (image && /static\.cdninstagram\.com\/rsrc\.php/i.test(image)) image = null;
+  }
 
   res.status(200).json({ title: title || null, image: image || null });
 };
