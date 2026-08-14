@@ -31,11 +31,19 @@
     <main id="grid"></main>
 
     <p id="emptyState" hidden>还没有灵感，点右上角 ＋ 开始收藏吧</p>
+    <div id="loadError" class="loadError" hidden>
+      <p>加载失败，数据还在云端，只是这次没刷出来</p>
+      <button id="retryBtn" class="smallBtn primary" type="button">点击重试</button>
+    </div>
   </div>
 
   <div id="todoView" hidden>
     <div id="todoList"></div>
     <p id="todoEmptyState" hidden>还没有待办，点右上角 ＋ 添加一个</p>
+    <div id="todoLoadError" class="loadError" hidden>
+      <p>加载失败，数据还在云端，只是这次没刷出来</p>
+      <button id="todoRetryBtn" class="smallBtn primary" type="button">点击重试</button>
+    </div>
   </div>
 
   <nav id="bottomNav">
