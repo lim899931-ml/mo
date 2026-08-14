@@ -381,9 +381,13 @@ function renderGrid() {
 async function refresh() {
   try {
     allItems = await dbGetAll();
+    $('#loadError').hidden = true;
     renderGrid();
   } catch (e) {
-    toast('加载失败，请检查网络后下拉刷新页面');
+    // don't touch allItems/renderGrid here — a failed refresh must never make
+    // existing items disappear or look like "there's nothing here"
+    $('#emptyState').hidden = true;
+    $('#loadError').hidden = false;
   }
 }
 
@@ -679,9 +683,13 @@ function renderTodoList() {
 async function refreshTodos() {
   try {
     allTodos = await dbGetAllTodos();
+    $('#todoLoadError').hidden = true;
     renderTodoList();
   } catch (e) {
-    toast('待办加载失败，请检查网络');
+    // don't touch allTodos/renderTodoList here — a failed refresh must never make
+    // existing todos disappear or look like "there's nothing here"
+    $('#todoEmptyState').hidden = true;
+    $('#todoLoadError').hidden = false;
   }
 }
 
@@ -783,6 +791,8 @@ async function deleteTodoCurrent() {
 // ── Wire up events ────────────────────────────────────────────────
 $('#navInspiration').onclick = () => switchView('inspiration');
 $('#navTodo').onclick = () => switchView('todo');
+$('#retryBtn').onclick = refresh;
+$('#todoRetryBtn').onclick = refreshTodos;
 
 $('#addBtn').onclick = () => {
   if (activeView === 'todo') openAddTodoSheet();
