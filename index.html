@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#111112">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,18 +18,36 @@
 
   <header id="topbar">
     <h1>灵感库 ✦</h1>
-    <button id="addBtn" class="iconBtn" aria-label="添加灵感">＋</button>
+    <button id="addBtn" class="iconBtn" aria-label="添加">＋</button>
   </header>
 
-  <div id="searchBar">
-    <input id="searchInput" type="search" placeholder="搜索标题 / 标签 / 备注...">
+  <div id="inspirationView">
+    <div id="searchBar">
+      <input id="searchInput" type="search" placeholder="搜索标题 / 标签 / 备注...">
+    </div>
+
+    <nav id="categoryTabs"></nav>
+
+    <main id="grid"></main>
+
+    <p id="emptyState" hidden>还没有灵感，点右上角 ＋ 开始收藏吧</p>
   </div>
 
-  <nav id="categoryTabs"></nav>
+  <div id="todoView" hidden>
+    <div id="todoList"></div>
+    <p id="todoEmptyState" hidden>还没有待办，点右上角 ＋ 添加一个</p>
+  </div>
 
-  <main id="grid"></main>
-
-  <p id="emptyState" hidden>还没有灵感，点右上角 ＋ 开始收藏吧</p>
+  <nav id="bottomNav">
+    <button id="navInspiration" class="navBtn active" type="button">
+      <span class="navIcon">✦</span>
+      <span>参考灵感</span>
+    </button>
+    <button id="navTodo" class="navBtn" type="button">
+      <span class="navIcon">☑</span>
+      <span>灵感Todo</span>
+    </button>
+  </nav>
 
 </div>
 
@@ -107,6 +125,43 @@
         <a id="detailOpenLink" class="smallBtn primary wide" target="_blank" rel="noopener">打开原链接</a>
         <button id="detailEditBtn" class="smallBtn wide" type="button">编辑</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Todo Sheet -->
+<div id="todoSheetOverlay" class="overlay" hidden>
+  <div class="sheet">
+    <div class="sheetHeader">
+      <h2 id="todoSheetTitle">添加待办</h2>
+      <button id="todoSheetClose" class="iconBtn" aria-label="关闭">✕</button>
+    </div>
+
+    <div class="sheetBody">
+      <label class="field">
+        <span class="fieldLabel">账号</span>
+        <div id="accountPicker" class="chipPicker"></div>
+      </label>
+
+      <label class="field">
+        <span class="fieldLabel">内容概括（一句话）</span>
+        <input id="todoSummaryInput" type="text" placeholder="例如：3个小众冷门旅游地推荐">
+      </label>
+
+      <label class="field">
+        <span class="fieldLabel">用户痛点</span>
+        <textarea id="todoPainInput" rows="3" placeholder="这条内容解决了用户什么问题 / 满足了什么需求..."></textarea>
+      </label>
+
+      <label class="field checkboxField">
+        <input id="todoDoneInput" type="checkbox">
+        <span class="fieldLabel">已完成 / 已发布</span>
+      </label>
+    </div>
+
+    <div class="sheetFooter">
+      <button id="todoDeleteBtn" class="smallBtn danger" type="button" hidden>删除</button>
+      <button id="todoSaveBtn" class="smallBtn primary wide" type="button">保存</button>
     </div>
   </div>
 </div>
