@@ -282,21 +282,25 @@ let editingTodoId = null;
 let pendingAccount = null;
 
 // ── Rendering: category tabs ─────────────────────────────────────
+// Same reasoning as renderCategoryPicker: build the tabs once, toggle classes
+// in-place on click — never tear down and recreate them on tap.
 function renderCategoryTabs() {
   const nav = $('#categoryTabs');
   nav.innerHTML = '';
-  const all = document.createElement('button');
-  all.className = 'catChip' + (activeCategory === 'all' ? ' active' : '');
-  all.textContent = '全部';
-  all.onclick = () => { activeCategory = 'all'; renderCategoryTabs(); renderGrid(); };
-  nav.appendChild(all);
-
-  categories.forEach((cat) => {
-    const chip = document.createElement('button');
-    chip.className = 'catChip' + (activeCategory === cat ? ' active' : '');
-    chip.textContent = cat;
-    chip.onclick = () => { activeCategory = cat; renderCategoryTabs(); renderGrid(); };
-    nav.appendChild(chip);
+  const values = ['all', ...categories];
+  const tabs = values.map((val) => {
+    const btn = document.createElement('button');
+    btn.className = 'catChip' + (activeCategory === val ? ' active' : '');
+    btn.textContent = val === 'all' ? '全部' : val;
+    nav.appendChild(btn);
+    return btn;
+  });
+  values.forEach((val, i) => {
+    tabs[i].onclick = () => {
+      activeCategory = val;
+      tabs.forEach((t, j) => t.classList.toggle('active', values[j] === val));
+      renderGrid();
+    };
   });
 }
 
@@ -393,6 +397,10 @@ async function refresh() {
 
 // ── Add/Edit sheet ────────────────────────────────────────────────
 // Categories are multi-select: a link can belong to several categories at once.
+// Rebuilds the chip row from scratch (only needed when the category list itself
+// changes). Clicking a chip must NEVER tear down and recreate the row — on real
+// touchscreens that reliably breaks taps on whichever chip gets swapped out from
+// under the finger mid-gesture. Toggling is handled in-place, see the onclick below.
 function renderCategoryPicker() {
   const wrap = $('#categoryPicker');
   wrap.innerHTML = '';
@@ -406,7 +414,7 @@ function renderCategoryPicker() {
       const i = pendingCategories.indexOf(cat);
       if (i > -1) pendingCategories.splice(i, 1);
       else pendingCategories.push(cat);
-      renderCategoryPicker();
+      chip.classList.toggle('active', pendingCategories.includes(cat));
     };
     wrap.appendChild(chip);
   });
@@ -420,7 +428,7 @@ function renderCategoryPicker() {
     if (!trimmed || categories.includes(trimmed)) return;
     categories.push(trimmed);
     pendingCategories.push(trimmed);
-    renderCategoryPicker();
+    renderCategoryPicker(); // list itself changed — a full rebuild here is fine
     renderCategoryTabs();
     try {
       await addCategoryRemote(trimmed);
@@ -703,19 +711,24 @@ async function toggleTodoDone(t) {
 }
 
 // ── Todo: add/edit sheet ─────────────────────────────────────────
+// Same reasoning as renderCategoryPicker: build the row once, toggle classes
+// in-place on click — never tear down and recreate chips on tap.
 function renderAccountPicker() {
   const wrap = $('#accountPicker');
   wrap.innerHTML = '';
-  ACCOUNTS.forEach((acc) => {
+  const chips = ACCOUNTS.map((acc) => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'chip' + (pendingAccount === acc ? ' active' : '');
     chip.textContent = acc;
-    chip.onclick = () => {
-      pendingAccount = pendingAccount === acc ? null : acc;
-      renderAccountPicker();
-    };
     wrap.appendChild(chip);
+    return chip;
+  });
+  ACCOUNTS.forEach((acc, i) => {
+    chips[i].onclick = () => {
+      pendingAccount = pendingAccount === acc ? null : acc;
+      chips.forEach((c, j) => c.classList.toggle('active', ACCOUNTS[j] === pendingAccount));
+    };
   });
 }
 
