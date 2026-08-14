@@ -124,6 +124,49 @@ async function addCategoryRemote(name) {
 
 let categories = [];
 
+// ── Todo layer (content-planning items, separate from the inspiration library) ──
+const ACCOUNTS = ['AI号', '搞笑号', '旅游探店号'];
+
+function todoRowToItem(row) {
+  return {
+    id: row.id,
+    account: row.account || '',
+    summary: row.summary || '',
+    painPoint: row.pain_point || '',
+    done: !!row.done,
+    createdAt: row.created_at,
+  };
+}
+
+function todoItemToRow(item) {
+  return {
+    id: item.id,
+    account: item.account,
+    summary: item.summary,
+    pain_point: item.painPoint,
+    done: item.done,
+    created_at: item.createdAt,
+  };
+}
+
+async function dbGetAllTodos() {
+  const res = await sb('todos?select=*&order=created_at.desc');
+  const rows = await res.json();
+  return rows.map(todoRowToItem);
+}
+
+async function dbPutTodo(item) {
+  await sb('todos', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(todoItemToRow(item)),
+  });
+}
+
+async function dbDeleteTodo(id) {
+  await sb(`todos?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 // ── Platform detection ───────────────────────────────────────────
 const PLATFORM_MAP = [
   { key: 'xhs', label: '小红书', test: /xiaohongshu\.com|xhslink\.com/i },
@@ -198,20 +241,26 @@ function applyPastedShareText(raw) {
   }
 }
 
-// downscale an image (data URL or remote URL fetched as blob) to keep storage lean
+// downscale an image (data URL or remote URL fetched as blob) to keep storage lean.
+// Resolves to null (instead of hanging forever) if the canvas export fails —
+// e.g. a cross-origin image without CORS headers taints the canvas.
 async function compressImage(srcDataURL, maxW = 720, quality = 0.82) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(1, maxW / img.width);
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+      try {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } catch (e) {
+        resolve(null);
+      }
     };
     img.onerror = () => resolve(srcDataURL);
     img.src = srcDataURL;
@@ -226,6 +275,11 @@ let editingId = null; // when set, sheet is in edit mode
 let pendingCoverDataURL = null; // cover chosen in the add/edit sheet
 let pendingTags = [];
 let pendingCategories = [];
+
+let activeView = 'inspiration'; // 'inspiration' | 'todo'
+let allTodos = [];
+let editingTodoId = null;
+let pendingAccount = null;
 
 // ── Rendering: category tabs ─────────────────────────────────────
 function renderCategoryTabs() {
@@ -454,9 +508,14 @@ async function fetchMetaForUrl() {
       $('#titleInput').value = data.title;
     }
     if (data.image) {
-      const compressed = await compressImage(data.image);
-      setCoverPreview(compressed);
-      $('#fetchStatus').textContent = '抓取成功 ✓';
+      const proxied = '/api/proxy-image?url=' + encodeURIComponent(data.image);
+      const compressed = await compressImage(proxied);
+      if (compressed) {
+        setCoverPreview(compressed);
+        $('#fetchStatus').textContent = '抓取成功 ✓';
+      } else {
+        $('#fetchStatus').textContent = data.title ? '抓到标题，封面下载失败，可手动上传截图' : '这个平台限制较多，自动抓取失败，请手动填写标题+上传封面截图';
+      }
     } else if (data.title) {
       $('#fetchStatus').textContent = '抓到标题，封面未抓到，可手动上传截图';
     } else {
@@ -557,8 +616,183 @@ function closeDetail() {
   detailId = null;
 }
 
+// ── View switching (参考灵感 / 灵感Todo) ─────────────────────────────
+function switchView(view) {
+  activeView = view;
+  $('#inspirationView').hidden = view !== 'inspiration';
+  $('#todoView').hidden = view !== 'todo';
+  $('#navInspiration').classList.toggle('active', view === 'inspiration');
+  $('#navTodo').classList.toggle('active', view === 'todo');
+}
+
+// ── Todo: rendering ───────────────────────────────────────────────
+function renderTodoList() {
+  const list = $('#todoList');
+  list.innerHTML = '';
+
+  const todos = allTodos.slice().sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    return b.createdAt - a.createdAt;
+  });
+
+  $('#todoEmptyState').hidden = todos.length > 0;
+
+  todos.forEach((t) => {
+    const card = document.createElement('div');
+    card.className = 'todoCard' + (t.done ? ' done' : '');
+
+    const check = document.createElement('div');
+    check.className = 'todoCheck' + (t.done ? ' checked' : '');
+    check.textContent = t.done ? '✓' : '';
+    check.onclick = (e) => {
+      e.stopPropagation();
+      toggleTodoDone(t);
+    };
+    card.appendChild(check);
+
+    const body = document.createElement('div');
+    body.className = 'todoBody';
+
+    const badge = document.createElement('span');
+    badge.className = 'todoAccountBadge';
+    badge.textContent = t.account || '未分配账号';
+    body.appendChild(badge);
+
+    const summary = document.createElement('div');
+    summary.className = 'todoSummary';
+    summary.textContent = t.summary || '(未填写内容概括)';
+    body.appendChild(summary);
+
+    if (t.painPoint) {
+      const pain = document.createElement('div');
+      pain.className = 'todoPain';
+      pain.textContent = '痛点：' + t.painPoint;
+      body.appendChild(pain);
+    }
+
+    card.appendChild(body);
+    card.onclick = () => openEditTodoSheet(t);
+    list.appendChild(card);
+  });
+}
+
+async function refreshTodos() {
+  try {
+    allTodos = await dbGetAllTodos();
+    renderTodoList();
+  } catch (e) {
+    toast('待办加载失败，请检查网络');
+  }
+}
+
+async function toggleTodoDone(t) {
+  try {
+    await dbPutTodo({ ...t, done: !t.done });
+    await refreshTodos();
+  } catch (e) {
+    toast('更新失败，请检查网络');
+  }
+}
+
+// ── Todo: add/edit sheet ─────────────────────────────────────────
+function renderAccountPicker() {
+  const wrap = $('#accountPicker');
+  wrap.innerHTML = '';
+  ACCOUNTS.forEach((acc) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip' + (pendingAccount === acc ? ' active' : '');
+    chip.textContent = acc;
+    chip.onclick = () => {
+      pendingAccount = pendingAccount === acc ? null : acc;
+      renderAccountPicker();
+    };
+    wrap.appendChild(chip);
+  });
+}
+
+function resetTodoSheet() {
+  editingTodoId = null;
+  pendingAccount = null;
+  $('#todoSummaryInput').value = '';
+  $('#todoPainInput').value = '';
+  $('#todoDoneInput').checked = false;
+  renderAccountPicker();
+  $('#todoDeleteBtn').hidden = true;
+  $('#todoSheetTitle').textContent = '添加待办';
+}
+
+function openAddTodoSheet() {
+  resetTodoSheet();
+  $('#todoSheetOverlay').hidden = false;
+}
+
+function openEditTodoSheet(item) {
+  resetTodoSheet();
+  editingTodoId = item.id;
+  $('#todoSheetTitle').textContent = '编辑待办';
+  pendingAccount = item.account || null;
+  renderAccountPicker();
+  $('#todoSummaryInput').value = item.summary || '';
+  $('#todoPainInput').value = item.painPoint || '';
+  $('#todoDoneInput').checked = !!item.done;
+  $('#todoDeleteBtn').hidden = false;
+  $('#todoSheetOverlay').hidden = false;
+}
+
+function closeTodoSheet() {
+  $('#todoSheetOverlay').hidden = true;
+}
+
+async function saveTodoSheet() {
+  const summary = $('#todoSummaryInput').value.trim();
+  const painPoint = $('#todoPainInput').value.trim();
+  if (!pendingAccount && !summary) { toast('至少选个账号或填一句内容概括'); return; }
+
+  const item = {
+    id: editingTodoId || uid(),
+    account: pendingAccount,
+    summary,
+    painPoint,
+    done: $('#todoDoneInput').checked,
+    createdAt: editingTodoId ? (allTodos.find((i) => i.id === editingTodoId)?.createdAt || Date.now()) : Date.now(),
+  };
+  try {
+    await dbPutTodo(item);
+    closeTodoSheet();
+    await refreshTodos();
+    toast('已保存');
+  } catch (e) {
+    toast('保存失败，请检查网络后重试');
+  }
+}
+
+async function deleteTodoCurrent() {
+  if (!editingTodoId) return;
+  if (!confirm('删除这条待办？')) return;
+  try {
+    await dbDeleteTodo(editingTodoId);
+    closeTodoSheet();
+    await refreshTodos();
+    toast('已删除');
+  } catch (e) {
+    toast('删除失败，请检查网络后重试');
+  }
+}
+
 // ── Wire up events ────────────────────────────────────────────────
-$('#addBtn').onclick = openAddSheet;
+$('#navInspiration').onclick = () => switchView('inspiration');
+$('#navTodo').onclick = () => switchView('todo');
+
+$('#addBtn').onclick = () => {
+  if (activeView === 'todo') openAddTodoSheet();
+  else openAddSheet();
+};
+$('#todoSheetClose').onclick = closeTodoSheet;
+$('#todoSheetOverlay').addEventListener('click', (e) => { if (e.target.id === 'todoSheetOverlay') closeTodoSheet(); });
+$('#todoSaveBtn').onclick = saveTodoSheet;
+$('#todoDeleteBtn').onclick = deleteTodoCurrent;
+
 $('#sheetClose').onclick = closeSheet;
 $('#sheetOverlay').addEventListener('click', (e) => { if (e.target.id === 'sheetOverlay') closeSheet(); });
 $('#fetchBtn').onclick = fetchMetaForUrl;
@@ -589,7 +823,7 @@ $('#coverFileInput').onchange = async (e) => {
   if (!file) return;
   const dataURL = await fileToDataURL(file);
   const compressed = await compressImage(dataURL);
-  setCoverPreview(compressed);
+  setCoverPreview(compressed || dataURL);
 };
 
 $('#tagInput').addEventListener('keydown', (e) => {
@@ -623,6 +857,7 @@ $('#detailEditBtn').onclick = () => {
   categories = await loadCategories();
   renderCategoryTabs();
   await refresh();
+  await refreshTodos();
 })();
 
 if ('serviceWorker' in navigator) {
