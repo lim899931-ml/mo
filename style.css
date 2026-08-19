@@ -67,8 +67,9 @@ body {
 .iconBtn:active { background: var(--surface2); }
 
 /* ── Search ── */
-#searchBar { padding: 0 16px 10px; }
-#searchInput {
+#searchBar, #howtoSearchBar { padding: 0 16px 10px; }
+#howtoSearchBar { padding-top: 12px; }
+#searchInput, #howtoSearchInput {
   width: 100%;
   height: 38px;
   border-radius: 10px;
@@ -76,9 +77,9 @@ body {
   background: var(--surface);
   color: var(--text);
   padding: 0 12px;
-  font-size: 16px;
+  font-size: 16px; /* iOS Safari auto-zooms the page on focus if an input's font is under 16px */
 }
-#searchInput::placeholder { color: var(--text2); }
+#searchInput::placeholder, #howtoSearchInput::placeholder { color: var(--text2); }
 
 /* ── Category tabs (also used by the todo view's account tabs) ── */
 #categoryTabs, #todoAccountTabs {
@@ -238,6 +239,7 @@ body {
   padding: 60px 20px;
   font-size: 14px;
 }
+
 .loadError {
   text-align: center;
   padding: 60px 20px;
@@ -303,6 +305,37 @@ body {
 .checkboxField { flex-direction: row !important; align-items: center; gap: 8px; }
 .checkboxField input[type="checkbox"] { width: 18px; height: 18px; }
 
+/* ── Howto view: dense list rows (no cards, no cover images — fits more per screen) ── */
+#howtoView { flex: 1; }
+#howtoList {
+  padding: 4px 16px calc(24px + var(--bottomnav-h) + var(--safe-bottom));
+}
+.howtoRow {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.howtoRow:last-child { border-bottom: none; }
+.howtoTitle { font-size: 14px; font-weight: 600; line-height: 1.35; }
+.howtoBodyPreview {
+  font-size: 12.5px;
+  color: var(--text2);
+  line-height: 1.4;
+  margin-top: 3px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.howtoMetaRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  flex-wrap: wrap;
+}
+.howtoLinkBadge { font-size: 11px; color: var(--accent2); white-space: nowrap; }
+
 /* ── Overlay & Sheet ── */
 .overlay {
   position: fixed;
@@ -354,7 +387,7 @@ input[type="url"], input[type="text"], textarea, input[type="file"] {
   background: var(--surface2);
   color: var(--text);
   padding: 10px 12px;
-  font-size: 16px;
+  font-size: 16px; /* iOS Safari auto-zooms the page on focus if an input's font is under 16px */
   font-family: inherit;
 }
 input[type="file"] { padding: 8px; font-size: 12.5px; }
