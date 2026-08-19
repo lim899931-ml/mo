@@ -167,6 +167,47 @@ async function dbDeleteTodo(id) {
   await sb(`todos?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+// ── Howto layer (editing/技巧 knowledge notes — text-only, no cover) ──────
+function howtoRowToItem(row) {
+  return {
+    id: row.id,
+    title: row.title || '',
+    body: row.body || '',
+    tags: row.tags || [],
+    url: row.url || '',
+    createdAt: row.created_at,
+  };
+}
+
+function howtoItemToRow(item) {
+  return {
+    id: item.id,
+    title: item.title,
+    body: item.body,
+    tags: item.tags,
+    url: item.url,
+    created_at: item.createdAt,
+  };
+}
+
+async function dbGetAllHowtos() {
+  const res = await sb('howtos?select=*&order=created_at.desc');
+  const rows = await res.json();
+  return rows.map(howtoRowToItem);
+}
+
+async function dbPutHowto(item) {
+  await sb('howtos', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(howtoItemToRow(item)),
+  });
+}
+
+async function dbDeleteHowto(id) {
+  await sb(`howtos?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 // ── Platform detection ───────────────────────────────────────────
 const PLATFORM_MAP = [
   { key: 'xhs', label: '小红书', test: /xiaohongshu\.com|xhslink\.com/i },
@@ -276,11 +317,16 @@ let pendingCoverDataURL = null; // cover chosen in the add/edit sheet
 let pendingTags = [];
 let pendingCategories = [];
 
-let activeView = 'inspiration'; // 'inspiration' | 'todo'
+let activeView = 'inspiration'; // 'inspiration' | 'todo' | 'howto'
 let allTodos = [];
 let editingTodoId = null;
 let pendingAccount = null;
 let activeAccountFilter = 'all';
+
+let allHowtos = [];
+let editingHowtoId = null;
+let pendingHowtoTags = [];
+let howtoSearchQuery = '';
 
 // ── Rendering: category tabs ─────────────────────────────────────
 // Same reasoning as renderCategoryPicker: build the tabs once, toggle classes
@@ -629,13 +675,15 @@ function closeDetail() {
   detailId = null;
 }
 
-// ── View switching (参考灵感 / 灵感Todo) ─────────────────────────────
+// ── View switching (参考灵感 / 灵感Todo / Howto) ─────────────────────
 function switchView(view) {
   activeView = view;
   $('#inspirationView').hidden = view !== 'inspiration';
   $('#todoView').hidden = view !== 'todo';
+  $('#howtoView').hidden = view !== 'howto';
   $('#navInspiration').classList.toggle('active', view === 'inspiration');
   $('#navTodo').classList.toggle('active', view === 'todo');
+  $('#navHowto').classList.toggle('active', view === 'howto');
 }
 
 // ── Todo: rendering ───────────────────────────────────────────────
@@ -827,16 +875,198 @@ async function deleteTodoCurrent() {
   }
 }
 
+// ── Howto: rendering ──────────────────────────────────────────────
+// Dense list rows, no cover images — this is text knowledge (how-to notes),
+// not visual inspiration, so a card grid would just waste screen space.
+function renderHowtoList() {
+  const list = $('#howtoList');
+  list.innerHTML = '';
+
+  let items = allHowtos.slice().sort((a, b) => b.createdAt - a.createdAt);
+  if (howtoSearchQuery.trim()) {
+    const q = howtoSearchQuery.trim().toLowerCase();
+    items = items.filter((h) => {
+      return (h.title || '').toLowerCase().includes(q) ||
+        (h.body || '').toLowerCase().includes(q) ||
+        (h.tags || []).some((t) => t.toLowerCase().includes(q));
+    });
+  }
+
+  $('#howtoEmptyState').hidden = items.length > 0;
+
+  items.forEach((h) => {
+    const row = document.createElement('div');
+    row.className = 'howtoRow';
+    row.onclick = () => openEditHowtoSheet(h);
+
+    const title = document.createElement('div');
+    title.className = 'howtoTitle';
+    title.textContent = h.title || '(未命名)';
+    row.appendChild(title);
+
+    if (h.body) {
+      const body = document.createElement('div');
+      body.className = 'howtoBodyPreview';
+      body.textContent = h.body;
+      row.appendChild(body);
+    }
+
+    if ((h.tags && h.tags.length) || h.url) {
+      const meta = document.createElement('div');
+      meta.className = 'howtoMetaRow';
+      (h.tags || []).forEach((t) => {
+        const tag = document.createElement('span');
+        tag.className = 'miniTag';
+        tag.textContent = '#' + t;
+        meta.appendChild(tag);
+      });
+      if (h.url) {
+        const link = document.createElement('span');
+        link.className = 'howtoLinkBadge';
+        link.textContent = '🔗 有原链接';
+        meta.appendChild(link);
+      }
+      row.appendChild(meta);
+    }
+
+    list.appendChild(row);
+  });
+}
+
+async function refreshHowtos() {
+  try {
+    allHowtos = await dbGetAllHowtos();
+    $('#howtoLoadError').hidden = true;
+    renderHowtoList();
+  } catch (e) {
+    // don't touch allHowtos/renderHowtoList here — a failed refresh must never
+    // make existing entries disappear or look like "there's nothing here"
+    $('#howtoEmptyState').hidden = true;
+    $('#howtoLoadError').hidden = false;
+  }
+}
+
+// ── Howto: add/edit sheet ─────────────────────────────────────────
+function renderHowtoTagList() {
+  const wrap = $('#howtoTagList');
+  wrap.innerHTML = '';
+  pendingHowtoTags.forEach((tag, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'chip tagChip';
+    chip.innerHTML = `#${tag} <span class="x">✕</span>`;
+    chip.querySelector('.x').onclick = () => {
+      pendingHowtoTags.splice(i, 1);
+      renderHowtoTagList();
+    };
+    wrap.appendChild(chip);
+  });
+}
+
+function resetHowtoSheet() {
+  editingHowtoId = null;
+  pendingHowtoTags = [];
+  $('#howtoTitleInput').value = '';
+  $('#howtoBodyInput').value = '';
+  $('#howtoTagInput').value = '';
+  $('#howtoUrlInput').value = '';
+  renderHowtoTagList();
+  $('#howtoDeleteBtn').hidden = true;
+  $('#howtoSheetTitle').textContent = '添加剪辑技巧';
+}
+
+function openAddHowtoSheet() {
+  resetHowtoSheet();
+  $('#howtoSheetOverlay').hidden = false;
+}
+
+function openEditHowtoSheet(item) {
+  resetHowtoSheet();
+  editingHowtoId = item.id;
+  $('#howtoSheetTitle').textContent = '编辑剪辑技巧';
+  $('#howtoTitleInput').value = item.title || '';
+  $('#howtoBodyInput').value = item.body || '';
+  $('#howtoUrlInput').value = item.url || '';
+  pendingHowtoTags = (item.tags || []).slice();
+  renderHowtoTagList();
+  $('#howtoDeleteBtn').hidden = false;
+  $('#howtoSheetOverlay').hidden = false;
+}
+
+function closeHowtoSheet() {
+  $('#howtoSheetOverlay').hidden = true;
+}
+
+async function saveHowtoSheet() {
+  const title = $('#howtoTitleInput').value.trim();
+  const body = $('#howtoBodyInput').value.trim();
+  if (!title && !body) { toast('至少填标题或正文'); return; }
+
+  const item = {
+    id: editingHowtoId || uid(),
+    title,
+    body,
+    tags: pendingHowtoTags.slice(),
+    url: $('#howtoUrlInput').value.trim(),
+    createdAt: editingHowtoId ? (allHowtos.find((h) => h.id === editingHowtoId)?.createdAt || Date.now()) : Date.now(),
+  };
+  try {
+    await dbPutHowto(item);
+    closeHowtoSheet();
+    await refreshHowtos();
+    toast('已保存');
+  } catch (e) {
+    toast('保存失败，请检查网络后重试');
+  }
+}
+
+async function deleteHowtoCurrent() {
+  if (!editingHowtoId) return;
+  if (!confirm('删除这条剪辑技巧？')) return;
+  try {
+    await dbDeleteHowto(editingHowtoId);
+    closeHowtoSheet();
+    await refreshHowtos();
+    toast('已删除');
+  } catch (e) {
+    toast('删除失败，请检查网络后重试');
+  }
+}
+
 // ── Wire up events ────────────────────────────────────────────────
 $('#navInspiration').onclick = () => switchView('inspiration');
 $('#navTodo').onclick = () => switchView('todo');
+$('#navHowto').onclick = () => switchView('howto');
 $('#retryBtn').onclick = refresh;
 $('#todoRetryBtn').onclick = refreshTodos;
+$('#howtoRetryBtn').onclick = refreshHowtos;
 
 $('#addBtn').onclick = () => {
   if (activeView === 'todo') openAddTodoSheet();
+  else if (activeView === 'howto') openAddHowtoSheet();
   else openAddSheet();
 };
+$('#howtoSheetClose').onclick = closeHowtoSheet;
+$('#howtoSheetOverlay').addEventListener('click', (e) => { if (e.target.id === 'howtoSheetOverlay') closeHowtoSheet(); });
+$('#howtoSaveBtn').onclick = saveHowtoSheet;
+$('#howtoDeleteBtn').onclick = deleteHowtoCurrent;
+
+$('#howtoTagInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const val = $('#howtoTagInput').value.trim().replace(/^#/, '');
+    if (val && !pendingHowtoTags.includes(val)) {
+      pendingHowtoTags.push(val);
+      renderHowtoTagList();
+    }
+    $('#howtoTagInput').value = '';
+  }
+});
+
+$('#howtoSearchInput').addEventListener('input', (e) => {
+  howtoSearchQuery = e.target.value;
+  renderHowtoList();
+});
+
 $('#todoSheetClose').onclick = closeTodoSheet;
 $('#todoSheetOverlay').addEventListener('click', (e) => { if (e.target.id === 'todoSheetOverlay') closeTodoSheet(); });
 $('#todoSaveBtn').onclick = saveTodoSheet;
@@ -908,6 +1138,7 @@ $('#detailEditBtn').onclick = () => {
   renderTodoAccountTabs();
   await refresh();
   await refreshTodos();
+  await refreshHowtos();
 })();
 
 if ('serviceWorker' in navigator) {
