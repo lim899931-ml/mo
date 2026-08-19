@@ -47,6 +47,18 @@
     </div>
   </div>
 
+  <div id="howtoView" hidden>
+    <div id="howtoSearchBar">
+      <input id="howtoSearchInput" type="search" placeholder="搜索标题 / 正文 / 标签...">
+    </div>
+    <div id="howtoList"></div>
+    <p id="howtoEmptyState" hidden>还没有收藏剪辑技巧，点右上角 ＋ 添加一个</p>
+    <div id="howtoLoadError" class="loadError" hidden>
+      <p>加载失败，数据还在云端，只是这次没刷出来</p>
+      <button id="howtoRetryBtn" class="smallBtn primary" type="button">点击重试</button>
+    </div>
+  </div>
+
   <nav id="bottomNav">
     <button id="navInspiration" class="navBtn active" type="button">
       <span class="navIcon">✦</span>
@@ -55,6 +67,10 @@
     <button id="navTodo" class="navBtn" type="button">
       <span class="navIcon">☑</span>
       <span>灵感Todo</span>
+    </button>
+    <button id="navHowto" class="navBtn" type="button">
+      <span class="navIcon">✂</span>
+      <span>Howto</span>
     </button>
   </nav>
 
@@ -171,6 +187,44 @@
     <div class="sheetFooter">
       <button id="todoDeleteBtn" class="smallBtn danger" type="button" hidden>删除</button>
       <button id="todoSaveBtn" class="smallBtn primary wide" type="button">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Howto Sheet -->
+<div id="howtoSheetOverlay" class="overlay" hidden>
+  <div class="sheet">
+    <div class="sheetHeader">
+      <h2 id="howtoSheetTitle">添加剪辑技巧</h2>
+      <button id="howtoSheetClose" class="iconBtn" aria-label="关闭">✕</button>
+    </div>
+
+    <div class="sheetBody">
+      <label class="field">
+        <span class="fieldLabel">标题</span>
+        <input id="howtoTitleInput" type="text" placeholder="给这个技巧起个标题...">
+      </label>
+
+      <label class="field">
+        <span class="fieldLabel">正文说明</span>
+        <textarea id="howtoBodyInput" rows="5" placeholder="具体怎么操作..."></textarea>
+      </label>
+
+      <label class="field">
+        <span class="fieldLabel">标签（回车添加，方便搜索）</span>
+        <input id="howtoTagInput" type="text" placeholder="例如：CapCut / 转场 / 调色">
+        <div id="howtoTagList" class="chipList"></div>
+      </label>
+
+      <label class="field">
+        <span class="fieldLabel">原链接（可选）</span>
+        <input id="howtoUrlInput" type="url" placeholder="如果是从某个视频/帖子学来的...">
+      </label>
+    </div>
+
+    <div class="sheetFooter">
+      <button id="howtoDeleteBtn" class="smallBtn danger" type="button" hidden>删除</button>
+      <button id="howtoSaveBtn" class="smallBtn primary wide" type="button">保存</button>
     </div>
   </div>
 </div>
