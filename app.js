@@ -921,9 +921,13 @@ function renderHowtoList() {
         meta.appendChild(tag);
       });
       if (h.url) {
-        const link = document.createElement('span');
+        const link = document.createElement('a');
         link.className = 'howtoLinkBadge';
-        link.textContent = '🔗 有原链接';
+        link.href = h.url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = '🔗 打开原链接';
+        link.onclick = (e) => e.stopPropagation(); // don't also open the edit sheet
         meta.appendChild(link);
       }
       row.appendChild(meta);
@@ -969,9 +973,46 @@ function resetHowtoSheet() {
   $('#howtoBodyInput').value = '';
   $('#howtoTagInput').value = '';
   $('#howtoUrlInput').value = '';
+  $('#howtoFetchStatus').textContent = '';
   renderHowtoTagList();
   $('#howtoDeleteBtn').hidden = true;
   $('#howtoSheetTitle').textContent = '添加剪辑技巧';
+}
+
+// same clipboard-share-text trick as the inspiration sheet: xhs/douyin "复制链接"
+// puts a whole caption blob on the clipboard, not a bare URL — pull the title out.
+function applyPastedShareTextToHowto(raw) {
+  const { url, title } = extractShareText(raw);
+  if (url) $('#howtoUrlInput').value = url;
+  if (title && !$('#howtoTitleInput').value) {
+    $('#howtoTitleInput').value = title;
+    toast('已从分享文本中识别标题');
+  } else {
+    toast('已粘贴');
+  }
+}
+
+// reuses the same /api/fetch-meta the inspiration sheet uses, but only cares
+// about the title — howtos don't store a cover image.
+async function fetchHowtoTitle() {
+  const url = $('#howtoUrlInput').value.trim();
+  if (!url) { toast('先粘贴一个链接'); return; }
+  $('#howtoFetchStatus').textContent = '抓取中...';
+  $('#howtoFetchBtn').disabled = true;
+  try {
+    const res = await fetch('/api/fetch-meta?url=' + encodeURIComponent(url));
+    const data = await res.json();
+    if (data.title) {
+      if (!$('#howtoTitleInput').value) $('#howtoTitleInput').value = data.title;
+      $('#howtoFetchStatus').textContent = '抓取成功 ✓';
+    } else {
+      $('#howtoFetchStatus').textContent = '这个平台限制较多，自动抓取失败，请手动填写标题';
+    }
+  } catch (e) {
+    $('#howtoFetchStatus').textContent = '抓取失败，请手动填写标题';
+  } finally {
+    $('#howtoFetchBtn').disabled = false;
+  }
 }
 
 function openAddHowtoSheet() {
@@ -1049,6 +1090,25 @@ $('#howtoSheetClose').onclick = closeHowtoSheet;
 $('#howtoSheetOverlay').addEventListener('click', (e) => { if (e.target.id === 'howtoSheetOverlay') closeHowtoSheet(); });
 $('#howtoSaveBtn').onclick = saveHowtoSheet;
 $('#howtoDeleteBtn').onclick = deleteHowtoCurrent;
+$('#howtoFetchBtn').onclick = fetchHowtoTitle;
+
+$('#howtoPasteBtn').onclick = async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) applyPastedShareTextToHowto(text.trim());
+  } catch (e) {
+    toast('无法读取剪贴板，请手动粘贴');
+  }
+};
+
+// also catch a manual Cmd/Ctrl+V paste directly into the link field
+$('#howtoUrlInput').addEventListener('paste', (e) => {
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  if (text && /\s/.test(text.trim())) {
+    e.preventDefault();
+    applyPastedShareTextToHowto(text.trim());
+  }
+});
 
 $('#howtoTagInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
