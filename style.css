@@ -334,7 +334,7 @@ body {
   margin-top: 5px;
   flex-wrap: wrap;
 }
-.howtoLinkBadge { font-size: 11px; color: var(--accent2); white-space: nowrap; }
+.howtoLinkBadge { font-size: 11px; color: var(--accent2); white-space: nowrap; text-decoration: underline; }
 
 /* ── Overlay & Sheet ── */
 .overlay {
