@@ -201,6 +201,19 @@
 
     <div class="sheetBody">
       <label class="field">
+        <span class="fieldLabel">链接（可选，如果是从某个视频/帖子学来的）</span>
+        <div class="linkRow">
+          <input id="howtoUrlInput" type="url" placeholder="粘贴 小红书/抖音/TikTok/Instagram 链接...">
+          <button id="howtoPasteBtn" class="smallBtn" type="button">粘贴</button>
+        </div>
+      </label>
+
+      <div class="linkActions">
+        <button id="howtoFetchBtn" class="smallBtn primary" type="button">自动抓取标题</button>
+        <span id="howtoFetchStatus" class="fetchStatus"></span>
+      </div>
+
+      <label class="field">
         <span class="fieldLabel">标题</span>
         <input id="howtoTitleInput" type="text" placeholder="给这个技巧起个标题...">
       </label>
@@ -214,11 +227,6 @@
         <span class="fieldLabel">标签（回车添加，方便搜索）</span>
         <input id="howtoTagInput" type="text" placeholder="例如：CapCut / 转场 / 调色">
         <div id="howtoTagList" class="chipList"></div>
-      </label>
-
-      <label class="field">
-        <span class="fieldLabel">原链接（可选）</span>
-        <input id="howtoUrlInput" type="url" placeholder="如果是从某个视频/帖子学来的...">
       </label>
     </div>
 
