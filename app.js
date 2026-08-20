@@ -251,14 +251,31 @@ function fileToDataURL(file) {
   });
 }
 
+// Guarantees whatever comes out is either a real, directly-openable http(s) URL,
+// or '' — never raw prose. Auto-prepends "https://" for bare domains, and rejects
+// anything containing whitespace (a real URL never has unencoded spaces in it).
+function normalizeUrl(str) {
+  const s = (str || '').trim();
+  if (!s || /\s/.test(s)) return '';
+  try {
+    const withScheme = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+    const u = new URL(withScheme);
+    if (!/^https?:$/.test(u.protocol)) return '';
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(u.hostname)) return ''; // must look like a real domain
+    return u.toString();
+  } catch (e) {
+    return '';
+  }
+}
+
 // xhs/douyin "分享" copies a text blob, not a bare URL — the real title is sitting
 // right there in the text, so pull it out instead of relying on server-side scraping.
 function extractShareText(raw) {
   const text = (raw || '').trim();
   const urlMatch = text.match(/https?:\/\/\S+/);
-  if (!urlMatch) return { url: text, title: '' };
+  if (!urlMatch) return { url: '', title: text }; // no link at all — never guess, just offer the raw text as a title
 
-  const url = urlMatch[0].replace(/[，。！？,.!?]+$/, '').trim();
+  const url = normalizeUrl(urlMatch[0].replace(/[，。！？,.!?]+$/, ''));
   let before = text.slice(0, urlMatch.index);
 
   before = before.replace(/^\d+(\.\d+)?\s+/, ''); // douyin's leading "1.56 " version code
@@ -588,9 +605,11 @@ async function fetchMetaForUrl() {
 }
 
 async function saveSheet() {
-  const url = $('#urlInput').value.trim();
+  const rawUrl = $('#urlInput').value.trim();
   const title = $('#titleInput').value.trim();
-  if (!url && !title) { toast('至少填一个链接或标题'); return; }
+  if (!rawUrl && !title) { toast('至少填一个链接或标题'); return; }
+  const url = normalizeUrl(rawUrl);
+  const urlWasInvalid = rawUrl && !url;
 
   const item = {
     id: editingId || uid(),
@@ -606,7 +625,7 @@ async function saveSheet() {
     await dbPut(item);
     closeSheet();
     await refresh();
-    toast('已保存');
+    toast(urlWasInvalid ? '已保存，但链接看起来不对，没存，回来改一下' : '已保存');
   } catch (e) {
     toast('保存失败，请检查网络后重试');
   }
@@ -661,8 +680,9 @@ function openDetail(id) {
   $('#detailNote').hidden = !item.note;
 
   const openLink = $('#detailOpenLink');
-  if (item.url) {
-    openLink.href = item.url;
+  const validItemUrl = normalizeUrl(item.url); // defends against any already-saved bad link
+  if (validItemUrl) {
+    openLink.href = validItemUrl;
     openLink.hidden = false;
   } else {
     openLink.hidden = true;
@@ -675,7 +695,7 @@ function closeDetail() {
   detailId = null;
 }
 
-// ── View switching (参考灵感 / 灵感Todo / Howto) ─────────────────────
+// ── View switching (参考灵感 / 灵感Todo) ─────────────────────────────
 function switchView(view) {
   activeView = view;
   $('#inspirationView').hidden = view !== 'inspiration';
@@ -911,7 +931,8 @@ function renderHowtoList() {
       row.appendChild(body);
     }
 
-    if ((h.tags && h.tags.length) || h.url) {
+    const validHowtoUrl = normalizeUrl(h.url); // defends against any already-saved bad link
+    if ((h.tags && h.tags.length) || validHowtoUrl) {
       const meta = document.createElement('div');
       meta.className = 'howtoMetaRow';
       (h.tags || []).forEach((t) => {
@@ -920,10 +941,10 @@ function renderHowtoList() {
         tag.textContent = '#' + t;
         meta.appendChild(tag);
       });
-      if (h.url) {
+      if (validHowtoUrl) {
         const link = document.createElement('a');
         link.className = 'howtoLinkBadge';
-        link.href = h.url;
+        link.href = validHowtoUrl;
         link.target = '_blank';
         link.rel = 'noopener';
         link.textContent = '🔗 打开原链接';
@@ -966,6 +987,21 @@ function renderHowtoTagList() {
   });
 }
 
+// keeps the "🔗 打开原链接" button in sync with whatever's currently in the link
+// field — always re-derived through normalizeUrl so it's either a real clickable
+// link or hidden entirely, never a stale/broken href.
+function refreshHowtoLinkButton() {
+  const url = normalizeUrl($('#howtoUrlInput').value);
+  const btn = $('#howtoOpenLinkBtn');
+  if (url) {
+    btn.href = url;
+    btn.hidden = false;
+  } else {
+    btn.hidden = true;
+    btn.removeAttribute('href');
+  }
+}
+
 function resetHowtoSheet() {
   editingHowtoId = null;
   pendingHowtoTags = [];
@@ -975,6 +1011,7 @@ function resetHowtoSheet() {
   $('#howtoUrlInput').value = '';
   $('#howtoFetchStatus').textContent = '';
   renderHowtoTagList();
+  refreshHowtoLinkButton();
   $('#howtoDeleteBtn').hidden = true;
   $('#howtoSheetTitle').textContent = '添加剪辑技巧';
 }
@@ -984,11 +1021,14 @@ function resetHowtoSheet() {
 function applyPastedShareTextToHowto(raw) {
   const { url, title } = extractShareText(raw);
   if (url) $('#howtoUrlInput').value = url;
+  refreshHowtoLinkButton();
   if (title && !$('#howtoTitleInput').value) {
     $('#howtoTitleInput').value = title;
     toast('已从分享文本中识别标题');
-  } else {
+  } else if (url) {
     toast('已粘贴');
+  } else {
+    toast('没识别到有效链接，只识别了文字，可手动检查链接框');
   }
 }
 
@@ -1027,6 +1067,7 @@ function openEditHowtoSheet(item) {
   $('#howtoTitleInput').value = item.title || '';
   $('#howtoBodyInput').value = item.body || '';
   $('#howtoUrlInput').value = item.url || '';
+  refreshHowtoLinkButton();
   pendingHowtoTags = (item.tags || []).slice();
   renderHowtoTagList();
   $('#howtoDeleteBtn').hidden = false;
@@ -1041,20 +1082,23 @@ async function saveHowtoSheet() {
   const title = $('#howtoTitleInput').value.trim();
   const body = $('#howtoBodyInput').value.trim();
   if (!title && !body) { toast('至少填标题或正文'); return; }
+  const rawUrl = $('#howtoUrlInput').value.trim();
+  const url = normalizeUrl(rawUrl);
+  const urlWasInvalid = rawUrl && !url;
 
   const item = {
     id: editingHowtoId || uid(),
     title,
     body,
     tags: pendingHowtoTags.slice(),
-    url: $('#howtoUrlInput').value.trim(),
+    url,
     createdAt: editingHowtoId ? (allHowtos.find((h) => h.id === editingHowtoId)?.createdAt || Date.now()) : Date.now(),
   };
   try {
     await dbPutHowto(item);
     closeHowtoSheet();
     await refreshHowtos();
-    toast('已保存');
+    toast(urlWasInvalid ? '已保存，但链接看起来不对，没存，回来改一下' : '已保存');
   } catch (e) {
     toast('保存失败，请检查网络后重试');
   }
@@ -1109,6 +1153,9 @@ $('#howtoUrlInput').addEventListener('paste', (e) => {
     applyPastedShareTextToHowto(text.trim());
   }
 });
+// covers manual typing/editing and the case above where preventDefault didn't fire
+// (a clean bare URL paste) — always keep the open-link button in sync
+$('#howtoUrlInput').addEventListener('input', refreshHowtoLinkButton);
 
 $('#howtoTagInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
